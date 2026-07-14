@@ -113,20 +113,6 @@ function getData(response) {
   }
 }
 
-function parseFormBody(body, contentType) {
-  if (contentType && contentType.includes('application/json')) {
-    return JSON.parse(body);
-  }
-  // application/x-www-form-urlencoded
-  const params = {};
-  const pairs = body.split('&');
-  for (const pair of pairs) {
-    const [key, value] = pair.split('=').map(decodeURIComponent);
-    if (key) params[key] = value || '';
-  }
-  return params;
-}
-
 function getClientIp(headers) {
   if (headers['cf-connecting-ip']) return headers['cf-connecting-ip'];
   if (headers['x-real-ip']) return headers['x-real-ip'];
@@ -135,9 +121,9 @@ function getClientIp(headers) {
 }
 
 module.exports = async (req, res) => {
-  // Handle CORS preflight
+  // Handle CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -145,22 +131,15 @@ module.exports = async (req, res) => {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).send('Method not allowed');
   }
 
   try {
-    // Parse body
-    let body = '';
-    await new Promise((resolve) => {
-      req.on('data', (chunk) => (body += chunk));
-      req.on('end', resolve);
-    });
-
-    const post = parseFormBody(body, req.headers['content-type']);
+    // Vercel automatically parses the body into req.body
+    const post = req.body || {};
     const query = req.query || {};
 
     if (!post.name || !post.phone) {
-      // Redirect back
       const referer = req.headers.referer || '/';
       return res.writeHead(302, { Location: referer }).end();
     }
@@ -174,7 +153,7 @@ module.exports = async (req, res) => {
       country: 'HU',
     };
 
-    // Optional params
+    // Optional params from form body
     const optionalFields = [
       'region', 'city', 'count', 'tz', 'address', 'email', 'zip',
       'user_comment', 'stream_id',
@@ -195,7 +174,7 @@ module.exports = async (req, res) => {
       if (query[field]) leadData[field] = query[field];
     }
 
-    // Referer and user agent
+    // Referer, user agent, IP
     leadData.referer = query.referer || req.headers.referer || '';
     leadData.user_agent = req.headers['user-agent'] || 'Unknown';
     leadData.ip = ip;
@@ -207,10 +186,9 @@ module.exports = async (req, res) => {
       const redirectUrl = `/success.html?id=${lead.id}`;
       return res.writeHead(302, { Location: redirectUrl }).end();
     } else {
-      return res.status(500).json({ error: 'Failed to create lead' });
+      return res.status(500).send('Failed to create lead');
     }
   } catch (err) {
-    // On error, return error message
     return res.status(500).send(err.message);
   }
 };
